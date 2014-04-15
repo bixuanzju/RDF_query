@@ -2,3 +2,7 @@
 /.project
 /project/
 target/
+/.ensime
+/.ensime_lucene/
+/lib/.DS_Store
+/src/main/.DS_Store

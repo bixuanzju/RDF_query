@@ -11,22 +11,8 @@ object Query {
       .setMaster("local")
       .setAppName("Exercise")
       .setJars(List("target/scala-2.10/query-project_2.10-1.0.jar"))
-      .setSparkHome("/Users/jeremybi/spark-0.9.0-incubating-bin-hadoop1")
+      .setSparkHome("/Users/jeremybi/spark-0.9.1-bin-hadoop1")
     val sc = new SparkContext(conf)
-
-    // val a = sc.parallelize(List((1, "aa"), (2, "bb"), (3, "cc")))
-    // val b = sc.parallelize(List((1, "ee"), (2, "ff"), (3, "gg")))
-    // val joined = a.join(b).map {
-    //   case (key, (value1, value2)) => (key, List(value1, value2))
-    // }
-
-    // val c = sc.parallelize(List((1, "gg"), (2, "kk"), (3, "ii")))
-    // val joined2 = joined.join(c).map {
-    //   case (key, (value1, value2)) => (key, value1 ++ List(value2))
-    // }
-
-
-    // joined2.collect.foreach(println)
 
     val queryString = " PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> " +
                         " PREFIX ub: <http://www.lehigh.edu/hp2/2004/0401/univ-bench.owl#> " +
@@ -41,47 +27,59 @@ object Query {
                         " }"
 
     val query = new SSEDS(queryString)
+    var joined = sc.parallelize(Array(("", Vector("")))).cache
+
+    query.splan.foreach(
+      splan => {
+        splan.bgp_index.foreach(
+          index => {
+            val bgp = query.newbgp(index)
+
+            val Regex1 = """<.*#([a-zA-Z]+)>""".r
+            val pred = bgp.bgp_predicate.split("_").map {
+              case Regex1(p) => p
+            }.reduceLeft(_ + "_" + _)
+
+            val fileNames = superClass(pred.split("_"))
+
+            val Regex2 = """\(.*,\((.*),(.*)\)\)$""".r
+            val tuples = fileNames.
+              map(file => sc.textFile("hdfs://localhost:9000/user/jeremybi/" + file)).
+              reduceLeft(_ ++ _).
+              map {
+                case Regex2(p1, p2) =>
+                  if (splan.name == bgp.bgp_var(0))
+                    (p1, p2)
+                  else
+                    (p2, p1)
+                case _ => ("noMatch", "noMatch")}.
+              partitionBy(new HashPartitioner(8))
 
 
-    query.splan.foreach(splan =>
-      splan.bgp_index.foreach(
-        index => {
-          val bgp = query.newbgp(index)
+            if (index == 0)
+              joined = tuples.map {
+                case (key, value) => (key, Vector(value))}
+            else
+              joined = joined.join(tuples).mapValues {
+                case (vals, value) => (vals :+ value)}})
 
-          val Regex = "<.*#([a-zA-Z]+)>".r
-          val pred = bgp.bgp_predicate.split("_").map {
-            case Regex(p) => p
-          }.reduceLeft(_ + "_" + _)
-
-          superClass(pred.split("_")).foreach(println)
-
-          // bgp.bgp_type match {
-          //   case "_PO" => superClass(pred.split("_"), bgp.bgp_type)
-          //   case "SP_" => superClass(pred.split("_"), bgp.bgp_type)
-          //   case "_P_" => List(pred)
-          // }
-
-
-          // val spo = pred match {
-          //   case Regex(sub, pred) => (sub, pred)
-          //   case _ => ("noMatch", "noMatch")
-          // }
-
-          // val fileNames = superClass(spo)
-
-          // val Regex1 = """\(.*,\((.*),(.*)\)\)""".r
-          // val tuples = fileNames.
-          //   map(name => sc.textFile(s"hdfs://localhost:9000/user/jeremybi/${spo._2}/$name")).
-          //   reduce(_++_).
-          //   map {
-          //     case Regex1(sub, obj) => (sub, obj)
-          //     case _ => ("noMatch", "noMatch")
-          //   }
-
-          // tuples.foreach(println)
-        }
-      )
+        // swap position for next join
+        if (splan.vars(0) == "")
+          joined.collect.foreach {
+            case (key, vals) => println(key)
+          }
+          // println("Total number is " + joined.collect.length)
+        else
+          joined = joined map {
+            case (key, vals) => (vals(1), vals updated (1, key))
+          }
+      }
     )
+
+    // val lines1 = sc.textFile("/Users/jeremybi/Desktop/Q8.txt").collect
+    // val lines2 = sc.textFile("/Users/jeremybi/Desktop/Output.txt").collect
+
+    // lines1.filter(line => !(lines2 contains line)).foreach(println)
 
     sc.stop()
 
@@ -100,44 +98,18 @@ object Query {
                       ("Chair" -> List("FullProfessor", "AssociateProfessor",
                                        "AssistantProfessor")))
 
-    pred.length match {
-      case 1 =>
-        List(pred(0))
-      case 2 => {
-
-        val lst1 = classes.get(pred(0)) match {
-          case None => List(pred(0))
-          case Some(lst) => lst
+    pred.foldLeft(Nil: List[String])(
+      (lst, item) => {
+        val candidates = classes.get(item) match {
+          case None => List(item)
+          case Some(cand) => cand
         }
-        val lst2 = classes.get(pred(1)) match {
-          case None => List(pred(1))
-          case Some(lst) => lst
-        }
-
-        lst1.map(item1 =>
-          lst2.map(item2 => item1 + "_" + item2)
-        )
-      }
-      case 3 => {
-        val lst1 = classes.get(pred(0)) match {
-          case None => List(pred(0))
-          case Some(lst) => lst
-        }
-        val lst2 = classes.get(pred(1)) match {
-          case None => List(pred(1))
-          case Some(lst) => lst
-        }
-        val lst3 = classes.get(pred(2)) match {
-          case None => List(pred(2))
-          case Some(lst) => lst
-        }
-
-        lst1.map(item1 =>
-          lst2.map(item2 =>
-            lst3.map(item3 => s"${item1}_${item2}_${item3}")
-          )
-        )
-      }
-    }
+        if (lst.isEmpty)
+          candidates
+        else
+          for {
+            item1 <- lst
+            item2 <- candidates
+          } yield item1 + "_" + item2})
   }
 }
