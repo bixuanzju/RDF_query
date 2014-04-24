@@ -14,26 +14,14 @@ object Query {
       .setSparkHome("/Users/jeremybi/spark-0.9.1-bin-hadoop1")
     val sc = new SparkContext(conf)
 
-    val queryString = " PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> " +
-                      " PREFIX ub: <http://swat.cse.lehigh.edu/onto/univ-bench.owl#> " +
-                      " SELECT ?X ?Y ?Z" +
-                      " WHERE " +
-                      " { " +
-                      "       ?X rdf:type ub:UndergraduateStudent." +
-                      "       ?Y rdf:type ub:Department." +
-                      "       ?X ub:memberOf ?Y." +
-                      "       ?Y ub:subOrganizationOf <http://www.University0.edu>." +
-                      "       ?X ub:emailAddress ?Z"+
-                      " }"
-
     val mapPath = "/Users/jeremybi/Desktop/new_data/data/mapping/part-r-00000"
-
     val lookup = sc.textFile(mapPath).
       map(line => line.split(" ")).
       map(array => (array(0).toLong, (array(1)))).collect.toMap
 
-    val query = new SSEDS(queryString)
-    var joined = sc.parallelize(Array((-1L, Vector(-1L)))).cache
+    val queryString = new QueryString()
+    val query = new SSEDS(QueryString.q(1))
+    var joined = sc.parallelize(Array(((-1L, -1L), Vector(-1L)))).cache
 
     for (i <- 0 until query.qplan.length) {
       val plan = query.qplan(i)
@@ -51,11 +39,19 @@ object Query {
           map {
             case Regex2(p1, p2) =>
               if (plan.name == bgp.bgp_var(0))
-                (p1.toLong, p2.toLong)
-              else
-                (p2.toLong, p1.toLong)
-            case _ => (-1L, -1L)
+                ((p1.toLong, -1L), p2.toLong)
+              else if (plan.name.length == 2)
+                ((p1.toLong, p2.toLong), -1L)
+              else ((p2.toLong, -1L), p1.toLong)
+            case _ => ((-1L, -1L), -1L)
+          }.
+          filter {
+            case (_, obj) =>
+              if (bgp.bgp_type == "_PO") obj == bgp.bgp_object_id.toLong
+              else if (bgp.bgp_type == "SP_") obj == bgp.bgp_subject_id.toLong
+              else true
           } // TODO: partitionBy
+
 
         if (index == 0)
           joined = tuples.map {
@@ -68,15 +64,19 @@ object Query {
       // output
       if (i == query.qplan.length - 1)
         // joined.collect.foreach {
-        //   case (key, vals) => println(lookup(vals(2)))}
+          // case (key, vals) => println(lookup(key))}
         println("Record number is " + joined.count)
       else
         // swap two positions for next join
-        if (plan.vars(0) != -1 && plan.vars(1) != -1) joined = joined
-      else
-        // swap one position for next join
+        if (plan.vars(0) != -1 && plan.vars(1) != -1)
         joined = joined map {
-          case (key, vals) => (vals(plan.vars(0)), vals updated (plan.vars(0), key))}
+          case (key, vals) => ((vals(plan.vars(0)), vals(plan.vars(1))),
+                                vals updated (plan.vars(0), key._1) updated (plan.vars(1), -1L))
+        }
+        else
+          // swap one position for next join
+          joined = joined map {
+            case (key, vals) => ((vals(plan.vars(0)), -1L), vals updated (plan.vars(0), key._1))}
     }
 
     sc.stop()
