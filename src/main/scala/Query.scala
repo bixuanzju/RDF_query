@@ -15,13 +15,16 @@ object Query {
     val sc = new SparkContext(conf)
 
     val mapPath = "/Users/jeremybi/Desktop/new_data/data/mapping/part-r-00000"
-    val lookup = sc.textFile(mapPath).
+    val lookup = sc.broadcast(sc.textFile(mapPath).
       map(line => line.split(" ")).
-      map(array => (array(0).toLong, (array(1)))).collect.toMap
+      map(array => (array(0).toLong, array(1))).collect.toMap)
 
-    val queryString = new QueryString()
-    val query = new SSEDS(QueryString.q(1))
-    var joined = sc.parallelize(Array(((-1L, -1L), Vector(-1L)))).cache
+    val queryNum = 4
+    val _ = new QueryString()
+    val query = new SSEDS(QueryString.q(queryNum))
+
+
+    var joined = sc.parallelize(Array(((-1L, -1L), Vector(-1L))))
 
     for (i <- 0 until query.qplan.length) {
       val plan = query.qplan(i)
@@ -29,20 +32,26 @@ object Query {
       for (index <- plan.bgp_index) {
         val bgp = query.newbgp(index)
 
-        // TODO: drop superClass for the moment
-        val fileName = "ff" + bgp.bgp_predicate_id
+        val fileName = superClass(
+          (if (bgp.bgp_predicate_id == "-1425683616493199")
+             bgp.bgp_object_id
+           else bgp.bgp_predicate_id).split("_")).map("ff" + _)
 
-        val Regex2 = """\((-?\d+),(-?\d+)\)""".r
+        val Regex1 = """\((-?\d+),(-?\d+)\)""".r
+        val Regex2 = """(-?\d+)""".r
 
         // swap positions for this join
-        val tuples = sc.textFile("hdfs://localhost:9000/user/jeremybi/partitions/" + fileName).
+        val tuples = fileName.map(name => // TODO: handle exception
+          sc.textFile("hdfs://localhost:9000/user/jeremybi/partitions/" + name)).
+          reduceLeft(_ ++ _).
           map {
-            case Regex2(p1, p2) =>
+            case Regex1(p1, p2) =>
               if (plan.name == bgp.bgp_var(0))
                 ((p1.toLong, -1L), p2.toLong)
               else if (plan.name.length == 2)
                 ((p1.toLong, p2.toLong), -1L)
               else ((p2.toLong, -1L), p1.toLong)
+            case Regex2(p) => ((p.toLong, -1L), -1L)
             case _ => ((-1L, -1L), -1L)
           }.
           filter {
@@ -64,7 +73,7 @@ object Query {
       // output
       if (i == query.qplan.length - 1)
         // joined.collect.foreach {
-          // case (key, vals) => println(lookup(key))}
+        //   case (key, vals) => println(lookup.value(key._1))}
         println("Record number is " + joined.count)
       else
         // swap two positions for next join
@@ -84,17 +93,28 @@ object Query {
   }
 
   def superClass(pred : Array[String]) = {
-    val classes = Map(("Professor" -> List("AssociateProfessor", "FullProfessor",
-                                           "AssistantProfessor")),
-                      ("Person" -> List("FullProfessor", "AssociateProfessor",
-                                        "AssistantProfessor", "Lecturer",
-                                        "UndergraduateStudent", "GraduateStudent",
-                                        "TeachingAssistant", "ResearchAssistant")),
-                      ("Student" -> List("GraduateStudent", "UndergraduateStudent")),
-                      ("Faculty" -> List("FullProfessor", "AssociateProfessor",
-                                         "AssistantProfessor", "Lecturer")),
-                      ("Chair" -> List("FullProfessor", "AssociateProfessor",
-                                       "AssistantProfessor")))
+    // val classes = Map(("Professor" -> List("AssociateProfessor", "FullProfessor",
+    //                                        "AssistantProfessor")),
+    //                   ("Person" -> List("FullProfessor", "AssociateProfessor",
+    //                                     "AssistantProfessor", "Lecturer",
+    //                                     "UndergraduateStudent", "GraduateStudent",
+    //                                     "TeachingAssistant", "ResearchAssistant")),
+    //                   ("Student" -> List("GraduateStudent", "UndergraduateStudent")),
+    //                   ("Faculty" -> List("FullProfessor", "AssociateProfessor",
+    //                                      "AssistantProfessor", "Lecturer")),
+    //                   ("Chair" -> List("FullProfessor", "AssociateProfessor",
+    //                                    "AssistantProfessor")))
+    val classes = Map(("-198794852858" -> List("203362154867", "-182999052962",
+                                               "22271127667")),
+                      ("175814932055" -> List("-182999052962", "203362154867",
+                                              "22271127667", "-9409035957",
+                                              "137572752569", "-198122920164",
+                                              "-102439739466", "106659238066")),
+                      ("10090957256" -> List("-198122920164", "137572752569")),
+                      ("-126289946156" -> List("-182999052962", "203362154867",
+                                         "22271127667", "-9409035957")),
+                      ("162645273054" -> List("-182999052962", "203362154867",
+                                       "22271127667")))
 
     pred.foldLeft(Nil: List[String])(
       (lst, item) => {
