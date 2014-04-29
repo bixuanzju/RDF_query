@@ -14,6 +14,8 @@ object Query {
       .setSparkHome("/Users/jeremybi/spark-0.9.1-bin-hadoop1")
     val sc = new SparkContext(conf)
 
+    val typeHash = "-1425683616493199"
+
     val mapPath = "/Users/jeremybi/Desktop/new_data/data/mapping/part-r-00000"
     val lookup = sc.broadcast(sc.textFile(mapPath).
                                 map(line => line.split(" ")).
@@ -37,7 +39,7 @@ object Query {
         val bgp = query.newbgp(index)
 
         val fileName =
-          superClass((if (bgp.bgp_predicate_id == "-1425683616493199")
+          superClass((if (bgp.bgp_predicate_id == typeHash)
                         bgp.bgp_object_id
                       else bgp.bgp_predicate_id).
                        split("_")).map("ff" + _).
@@ -62,7 +64,7 @@ object Query {
           }.
           filter {
             case (_, obj) =>
-              if (bgp.bgp_type == "_PO" && bgp.bgp_predicate_id != "-1425683616493199")
+              if (bgp.bgp_type == "_PO" && bgp.bgp_predicate_id != typeHash)
                 obj == bgp.bgp_object_id.toLong
               else if (bgp.bgp_type == "SP_") obj == bgp.bgp_subject_id.toLong
               else true
