@@ -16,10 +16,14 @@ object Query {
 
     val mapPath = "/Users/jeremybi/Desktop/new_data/data/mapping/part-r-00000"
     val lookup = sc.broadcast(sc.textFile(mapPath).
-      map(line => line.split(" ")).
-      map(array => (array(0).toLong, array(1))).collect.toMap)
+                                map(line => line.split(" ")).
+                                map(array => (array(0).toLong, array(1))).collect.toMap)
 
-    val queryNum = 4
+    val namePath = "hdfs://localhost:9000/user/jeremybi/partitions/filenames"
+    val filePaths = sc.broadcast(sc.textFile(namePath).collect.toSet)
+
+
+    val queryNum = 7
     val _ = new QueryString()
     val query = new SSEDS(QueryString.q(queryNum))
 
@@ -32,16 +36,18 @@ object Query {
       for (index <- plan.bgp_index) {
         val bgp = query.newbgp(index)
 
-        val fileName = superClass(
-          (if (bgp.bgp_predicate_id == "-1425683616493199")
-             bgp.bgp_object_id
-           else bgp.bgp_predicate_id).split("_")).map("ff" + _)
+        val fileName =
+          superClass((if (bgp.bgp_predicate_id == "-1425683616493199")
+                        bgp.bgp_object_id
+                      else bgp.bgp_predicate_id).
+                       split("_")).map("ff" + _).
+            filter(filePaths.value contains _)
 
         val Regex1 = """\((-?\d+),(-?\d+)\)""".r
         val Regex2 = """(-?\d+)""".r
 
         // swap positions for this join
-        val tuples = fileName.map(name => // TODO: handle exception
+        val tuples = fileName.map(name =>
           sc.textFile("hdfs://localhost:9000/user/jeremybi/partitions/" + name)).
           reduceLeft(_ ++ _).
           map {
@@ -56,7 +62,8 @@ object Query {
           }.
           filter {
             case (_, obj) =>
-              if (bgp.bgp_type == "_PO") obj == bgp.bgp_object_id.toLong
+              if (bgp.bgp_type == "_PO" && bgp.bgp_predicate_id != "-1425683616493199")
+                obj == bgp.bgp_object_id.toLong
               else if (bgp.bgp_type == "SP_") obj == bgp.bgp_subject_id.toLong
               else true
           } // TODO: partitionBy
