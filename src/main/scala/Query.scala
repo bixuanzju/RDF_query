@@ -10,22 +10,23 @@ object Query {
     val conf = new SparkConf()
       .setMaster("local")
       .setAppName("Exercise")
-      .setJars(List("target/scala-2.10/query-project_2.10-1.0.jar"))
-      .setSparkHome("/Users/jeremybi/spark-0.9.1-bin-hadoop1")
+      .setJars(SparkContext.jarOfClass(this.getClass))
+      .setSparkHome(System.getenv("SPARK_HOME"))
+      .set("spark.executor.memory", "10g")
     val sc = new SparkContext(conf)
 
     val typeHash = "-1425683616493199"
 
-    val mapPath = "/Users/jeremybi/Desktop/new_data/data/mapping/part-r-00000"
-    val lookup = sc.broadcast(sc.textFile(mapPath).
-                                map(line => line.split(" ")).
-                                map(array => (array(0).toLong, array(1))).collect.toMap)
+    // val mapPath = "/Users/jeremybi/Desktop/new_data/data/mapping/part-r-00000"
+    // val lookup = sc.broadcast(sc.textFile(mapPath).
+    //                             map(line => line.split(" ")).
+    //                             map(array => (array(0).toLong, array(1))).collect.toMap)
 
-    val namePath = "hdfs://localhost:9000/user/jeremybi/partitions/filenames"
+    val namePath = "hdfs://192.168.13.200:9000/user/root/partitions/filenames"
     val filePaths = sc.broadcast(sc.textFile(namePath).collect.toSet)
 
 
-    val queryNum = 7
+    val queryNum = args(0).toInt
     val _ = new QueryString()
     val query = new SSEDS(QueryString.q(queryNum))
 
@@ -50,7 +51,7 @@ object Query {
 
         // swap positions for this join
         val tuples = fileName.map(name =>
-          sc.textFile("hdfs://localhost:9000/user/jeremybi/partitions/" + name)).
+          sc.textFile("hdfs://192.168.13.200:9000/user/root/partitions/" + name)).
           reduceLeft(_ ++ _).
           map {
             case Regex1(p1, p2) =>
