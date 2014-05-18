@@ -26,7 +26,7 @@ object Query {
     val filePaths = sc.broadcast(sc.textFile(namePath).collect.toSet)
 
 
-    val queryNum = args(0).toInt
+    val queryNum = args(0).toInt - 1
     val _ = new QueryString()
     val query = new SSEDS(QueryString.q(queryNum))
 
@@ -81,10 +81,11 @@ object Query {
       }
 
       // output
-      if (i == query.qplan.length - 1)
+      if (i == query.qplan.length - 1) {
         // joined.collect.foreach {
-        //   case (key, vals) => println(lookup.value(key._1))}
+        //   case (key, vals) => println(key._1)}
         println("Record number is " + joined.count)
+      }
       else
         // swap two positions for next join
         if (plan.vars(0) != -1 && plan.vars(1) != -1)
