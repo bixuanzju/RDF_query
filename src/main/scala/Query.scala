@@ -8,6 +8,7 @@ object Query {
 
     // Initialization
     val conf = new SparkConf()
+      // .setMaster("spark://192.168.13.200:7077")
       .setMaster("local")
       .setAppName("Exercise")
       .setJars(SparkContext.jarOfClass(this.getClass))
@@ -25,12 +26,12 @@ object Query {
     val namePath = "hdfs://192.168.13.200:9000/user/root/partitions/filenames"
     val filePaths = sc.broadcast(sc.textFile(namePath).collect.toSet)
 
-
+    val startTime = System.currentTimeMillis()
     val queryNum = args(0).toInt - 1
     val _ = new QueryString()
     val query = new SSEDS(QueryString.q(queryNum))
 
-
+    // val startTime3 = System.currentTimeMillis()
     var joined = sc.parallelize(Array(((-1L, -1L), Vector(-1L))))
 
     for (i <- 0 until query.qplan.length) {
@@ -69,7 +70,7 @@ object Query {
                 obj == bgp.bgp_object_id.toLong
               else if (bgp.bgp_type == "SP_") obj == bgp.bgp_subject_id.toLong
               else true
-          } // TODO: partitionBy
+          }.partitionBy(new HashPartitioner(3))
 
 
         if (index == 0)
@@ -84,7 +85,14 @@ object Query {
       if (i == query.qplan.length - 1) {
         // joined.collect.foreach {
         //   case (key, vals) => println(key._1)}
-        println("Record number is " + joined.count)
+
+        //stop timing
+        val endTime = System.currentTimeMillis()
+        val totalTime = endTime - startTime;
+        // val totalTime3 = endTime - startTime3;
+
+        println("Running time is " + totalTime + ", Record number is " + joined.count)
+        // println("Running time is " + totalTime3 + " Record number is " + joined.count)
       }
       else
         // swap two positions for next join
