@@ -50,26 +50,29 @@ object Query {
         val Regex2 = """(-?\d+)""".r
 
         // swap positions for this join
-        val tuples = fileName.map(name =>
-          sc.textFile("hdfs://192.168.13.200:9000/user/root/partitions/" + name)).
-          reduceLeft(_ ++ _).
-          map {
-            case Regex1(p1, p2) =>
-              if (plan.name == bgp.bgp_var(0))
-                ((p1.toLong, -1L), p2.toLong)
-              else if (plan.name.length == 2)
-                ((p1.toLong, p2.toLong), -1L)
-              else ((p2.toLong, -1L), p1.toLong)
-            case Regex2(p) => ((p.toLong, -1L), -1L)
-            case _ => ((-1L, -1L), -1L)
-          }.
-          filter {
-            case (_, obj) =>
-              if (bgp.bgp_type == "_PO" && bgp.bgp_predicate_id != typeHash)
-                obj == bgp.bgp_object_id.toLong
-              else if (bgp.bgp_type == "SP_") obj == bgp.bgp_subject_id.toLong
-              else true
-          }.partitionBy(new HashPartitioner(3))
+        val tuples =
+          if (fileName.isEmpty) sc.parallelize(Array(((-1L, -1L), -1L)))
+          else
+            fileName.map(name =>
+              sc.textFile("hdfs://192.168.13.200:9000/user/root/partitions/" + name)).
+              reduceLeft(_ ++ _).
+              map {
+                case Regex1(p1, p2) =>
+                  if (plan.name == bgp.bgp_var(0))
+                    ((p1.toLong, -1L), p2.toLong)
+                  else if (plan.name.length == 2)
+                    ((p1.toLong, p2.toLong), -1L)
+                  else ((p2.toLong, -1L), p1.toLong)
+                case Regex2(p) => ((p.toLong, -1L), -1L)
+                case _ => ((-1L, -1L), -1L)
+              }.
+              filter {
+                case (_, obj) =>
+                  if (bgp.bgp_type == "_PO" && bgp.bgp_predicate_id != typeHash)
+                    obj == bgp.bgp_object_id.toLong
+                  else if (bgp.bgp_type == "SP_") obj == bgp.bgp_subject_id.toLong
+                  else true
+              }.partitionBy(new HashPartitioner(3))
 
 
         if (index == 0)
